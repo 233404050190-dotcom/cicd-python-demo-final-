@@ -1,0 +1,34 @@
+
+
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+venv/
+
+# Ruff
+.ruff_cache/
+
+# Test cache
+.pytest_cache/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+# Local deployment state and generated files
+state/
+*.tmp
+
+# These environment files contain non-secret demo settings and are required by Compose.
+!envs/.env.dev
+!envs/.env.staging
+!envs/.env.prod

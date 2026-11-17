@@ -1,0 +1,208 @@
+name: Continuous Deployment (CD)
+
+on:
+  workflow_run:
+    workflows:
+      - CI Pipeline
+    types:
+      - completed
+    branches:
+      - main
+      - develop
+      - "feature/**"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy_development:
+    name: Deploy Development to Windows 11 Server
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'feature/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: development
+    concurrency:
+      group: deploy-development
+      cancel-in-progress: false
+    steps:
+      - name: Checkout trusted deployment files from default branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${SSH_PRIVATE_KEY:?SSH_PRIVATE_KEY is not configured in the development environment}"
+          : "${SSH_KNOWN_HOSTS:?SSH_KNOWN_HOSTS is not configured in the development environment}"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
+
+      - name: Copy Development deployment files
+        shell: bash
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -euo pipefail
+          : "${SSH_HOST:?SSH_HOST is not configured}"
+          : "${SSH_PORT:?SSH_PORT is not configured}"
+          : "${SSH_USER:?SSH_USER is not configured}"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || { echo "SSH_PORT must be numeric" >&2; exit 1; }
+          target="${SSH_USER}@${SSH_HOST}"
+          scp -P "$SSH_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 scripts/deploy.ps1 "$target:C:/cicd-python-demo/scripts/deploy-development.ps1"
+          scp -P "$SSH_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 docker-compose.development.yml "$target:C:/cicd-python-demo/docker-compose.development.yml"
+          scp -P "$SSH_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 envs/.env.dev "$target:C:/cicd-python-demo/envs/.env.dev"
+
+      - name: Pull exact CI-built image and deploy Development
+        shell: bash
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          IMAGE_TAG: sha-${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_TAG" =~ ^sha-[0-9a-f]{40}$ ]] || { echo "Invalid immutable image tag" >&2; exit 1; }
+          ssh -p "$SSH_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -o ServerAliveInterval=30 \
+            "$SSH_USER@$SSH_HOST" \
+            "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:/cicd-python-demo/scripts/deploy-development.ps1 -Environment development -ImageTag $IMAGE_TAG"
+
+  deploy_staging:
+    name: Deploy Staging to Windows 11 Server
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - name: Checkout trusted deployment files from default branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${SSH_PRIVATE_KEY:?SSH_PRIVATE_KEY is not configured in the staging environment}"
+          : "${SSH_KNOWN_HOSTS:?SSH_KNOWN_HOSTS is not configured in the staging environment}"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
+
+      - name: Copy Staging deployment files
+        shell: bash
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -euo pipefail
+          : "${SSH_HOST:?SSH_HOST is not configured}"
+          : "${SSH_PORT:?SSH_PORT is not configured}"
+          : "${SSH_USER:?SSH_USER is not configured}"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || { echo "SSH_PORT must be numeric" >&2; exit 1; }
+          target="${SSH_USER}@${SSH_HOST}"
+          scp -P "$SSH_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 scripts/deploy.ps1 "$target:C:/cicd-python-demo/scripts/deploy-staging.ps1"
+          scp -P "$SSH_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 docker-compose.staging.yml "$target:C:/cicd-python-demo/docker-compose.staging.yml"
+          scp -P "$SSH_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 envs/.env.staging "$target:C:/cicd-python-demo/envs/.env.staging"
+
+      - name: Pull exact CI-built image and deploy Staging
+        shell: bash
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          IMAGE_TAG: sha-${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_TAG" =~ ^sha-[0-9a-f]{40}$ ]] || { echo "Invalid immutable image tag" >&2; exit 1; }
+          ssh -p "$SSH_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -o ServerAliveInterval=30 \
+            "$SSH_USER@$SSH_HOST" \
+            "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:/cicd-python-demo/scripts/deploy-staging.ps1 -Environment staging -ImageTag $IMAGE_TAG"
+
+  deploy_production:
+    name: Deploy Production to Windows 11 Server
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Checkout trusted deployment files from default branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${SSH_PRIVATE_KEY:?SSH_PRIVATE_KEY is not configured in the production environment}"
+          : "${SSH_KNOWN_HOSTS:?SSH_KNOWN_HOSTS is not configured in the production environment}"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
+
+      - name: Copy Production deployment files
+        shell: bash
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -euo pipefail
+          : "${SSH_HOST:?SSH_HOST is not configured}"
+          : "${SSH_PORT:?SSH_PORT is not configured}"
+          : "${SSH_USER:?SSH_USER is not configured}"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || { echo "SSH_PORT must be numeric" >&2; exit 1; }
+          target="${SSH_USER}@${SSH_HOST}"
+          scp -P "$SSH_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 scripts/deploy.ps1 "$target:C:/cicd-python-demo/scripts/deploy-production.ps1"
+          scp -P "$SSH_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 docker-compose.prod.yml "$target:C:/cicd-python-demo/docker-compose.prod.yml"
+          scp -P "$SSH_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 envs/.env.prod "$target:C:/cicd-python-demo/envs/.env.prod"
+
+      - name: Pull exact CI-built image and deploy Production
+        shell: bash
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          IMAGE_TAG: sha-${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_TAG" =~ ^sha-[0-9a-f]{40}$ ]] || { echo "Invalid immutable image tag" >&2; exit 1; }
+          ssh -p "$SSH_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -o ServerAliveInterval=30 \
+            "$SSH_USER@$SSH_HOST" \
+            "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:/cicd-python-demo/scripts/deploy-production.ps1 -Environment production -ImageTag $IMAGE_TAG"
