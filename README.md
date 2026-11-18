@@ -378,3 +378,4 @@ Lệnh dự kiến trả exit code khác 0 (lần release mới không tồn t�
 - GHCR package được giả định là Public để server pull không cần credential registry dài hạn.
 - SSH connectivity, Windows Docker Desktop, GitHub Environment/Secrets, quyền GHCR và Webhook phải được nhóm cấu hình/kiểm tra bên ngoài source code.
 - HTTP chưa có TLS/HTTPS, chưa có Nginx reverse proxy, monitoring tập trung hoặc hạ tầng HA.
+- CI/CD permission validation
