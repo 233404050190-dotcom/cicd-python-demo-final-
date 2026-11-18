@@ -3,8 +3,12 @@ name: Continuous Deployment (CD)
 on:
   workflow_run:
     workflows: ["CI Pipeline"]
-    types: [completed]
-    branches: [main, develop, "feature/**"]
+    types:
+      - completed
+    branches:
+      - main
+      - develop
+      - "feature/**"
 
 permissions:
   contents: read
@@ -13,60 +17,133 @@ permissions:
 jobs:
   deploy:
     name: Deploy to Windows 11 (TV1)
+
     if: >-
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.conclusion == 'success'
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.repository.full_name == github.repository
+
     runs-on: [self-hosted, Windows, X64, tv1]
+
     timeout-minutes: 20
+
     concurrency:
       group: deploy-${{ github.event.workflow_run.head_branch }}
       cancel-in-progress: false
+
     steps:
+      # 1. Checkout đúng phiên bản code đã vượt qua CI
       - name: Checkout trusted deployment files
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
+      # 2. Kiểm tra Docker và chuẩn bị thư mục triển khai
       - name: Verify Docker and copy deployment files
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+
           docker info | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop is not running' }
+
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Docker Desktop is not running'
+          }
+
           $root = 'C:\cicd-python-demo'
-          New-Item -ItemType Directory -Force -Path $root, "$root\scripts", "$root\envs" | Out-Null
-          Copy-Item 'scripts/deploy.ps1' "$root\scripts\deploy.ps1" -Force
-          Copy-Item 'docker-compose.development.yml' "$root\docker-compose.development.yml" -Force
-          Copy-Item 'docker-compose.staging.yml' "$root\docker-compose.staging.yml" -Force
-          Copy-Item 'docker-compose.prod.yml' "$root\docker-compose.prod.yml" -Force
-          Copy-Item 'envs/.env.dev' "$root\envs\.env.dev" -Force
-          Copy-Item 'envs/.env.staging' "$root\envs\.env.staging" -Force
-          Copy-Item 'envs/.env.prod' "$root\envs\.env.prod" -Force
 
+          New-Item -ItemType Directory -Force -Path `
+            $root, "$root\scripts", "$root\envs" | Out-Null
+
+          Copy-Item 'scripts/deploy.ps1' `
+            "$root\scripts\deploy.ps1" -Force
+
+          Copy-Item 'docker-compose.development.yml' `
+            "$root\docker-compose.development.yml" -Force
+
+          Copy-Item 'docker-compose.staging.yml' `
+            "$root\docker-compose.staging.yml" -Force
+
+          Copy-Item 'docker-compose.prod.yml' `
+            "$root\docker-compose.prod.yml" -Force
+
+          Copy-Item 'envs/.env.dev' `
+            "$root\envs\.env.dev" -Force
+
+          Copy-Item 'envs/.env.staging' `
+            "$root\envs\.env.staging" -Force
+
+          Copy-Item 'envs/.env.prod' `
+            "$root\envs\.env.prod" -Force
+
+          Write-Host 'Docker verification and file preparation succeeded.'
+
+      # 3. Đăng nhập GHCR bằng GITHUB_TOKEN
       - name: Log in to GitHub Container Registry
-        shell: powershell
-        env:
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-        run: |
-          $env:GHCR_TOKEN | docker login ghcr.io -u '${{ github.repository_owner }}' --password-stdin
-          if ($LASTEXITCODE -ne 0) { throw 'GHCR login failed; check package permissions' }
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Deploy exact image from successful CI
+      # 4. Xác định môi trường triển khai
+      - name: Select deployment environment
+        id: deployment
         shell: powershell
         env:
           SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:SOURCE_BRANCH -eq 'main') {
-            $target = 'production'
-          } elseif ($env:SOURCE_BRANCH -eq 'develop') {
-            $target = 'staging'
-          } elseif ($env:SOURCE_BRANCH -like 'feature/*') {
-            $target = 'development'
-          } else {
-            throw "Unsupported branch: $env:SOURCE_BRANCH"
-          }
-          & 'C:\cicd-python-demo\scripts\deploy.ps1' -Environment $target -ImageTag "sha-$env:SOURCE_SHA"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+          if ($env:SOURCE_SHA -notmatch '^[0-9a-f]{40}$') {
+            throw "Invalid source commit SHA"
+          }
+
+          switch -Wildcard ($env:SOURCE_BRANCH) {
+            'main' {
+              $target = 'production'
+            }
+
+            'develop' {
+              $target = 'staging'
+            }
+
+            'feature/*' {
+              $target = 'development'
+            }
+
+            default {
+              throw "Unsupported deployment branch: $env:SOURCE_BRANCH"
+            }
+          }
+
+          "ENVIRONMENT=$target" >> $env:GITHUB_OUTPUT
+          Write-Host "Branch: $env:SOURCE_BRANCH"
+          Write-Host "Environment: $target"
+          Write-Host "Image tag: sha-$env:SOURCE_SHA"
+
+      # 5. Triển khai Docker, Health Check và Rollback
+      - name: Deploy exact image from successful CI
+        shell: powershell
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          DEPLOY_ENVIRONMENT: ${{ steps.deployment.outputs.ENVIRONMENT }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          & 'C:\cicd-python-demo\scripts\deploy.ps1' `
+            -Environment $env:DEPLOY_ENVIRONMENT `
+            -ImageTag "sha-$env:SOURCE_SHA"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Deployment failed with exit code $LASTEXITCODE"
+          }
+
+      # 6. Ghi nhận kết quả
+      - name: Deployment completed
+        if: success()
+        shell: powershell
+        run: |
+          Write-Host 'Deployment completed successfully.' -ForegroundColor Green
