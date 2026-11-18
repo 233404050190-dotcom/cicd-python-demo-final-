@@ -17,7 +17,7 @@ GitHub Repository
 CI Pipeline
    +--> Ruff Lint + Format
    +--> Unit Test + Integration Test
-   |       (các job kiểm thử độc lập)
+   |       (cùng chạy trong job Automated Testing) 
    |
    +--> Quality và Test PASS
            |
