@@ -11,9 +11,9 @@ on:
       - main
       - develop
 
+# Default permissions: read-only.
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -28,6 +28,9 @@ jobs:
     name: Automated Testing
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -40,7 +43,9 @@ jobs:
           cache-dependency-path: requirements-dev.txt
 
       - name: Install dependencies
-        run: python -m pip install -r requirements-dev.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
 
       - name: Run Unit and Integration Tests
         run: python -m pytest tests/ -v --junitxml=test-results.xml
@@ -62,9 +67,12 @@ jobs:
       - quality
       - test
     if: github.event_name == 'push'
+
+    # Only this job receives permission to publish packages.
     permissions:
       contents: read
       packages: write
+
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -121,6 +129,9 @@ jobs:
       - test
       - build_push
     if: always()
+    permissions:
+      contents: read
+
     steps:
       - name: Compose CI result message
         id: result
@@ -146,6 +157,7 @@ jobs:
 
           short_sha="${SHA:0:7}"
           message="CI ${status} | Repository: ${GITHUB_REPOSITORY} | Branch: ${REF_NAME} | Event: ${EVENT_NAME} | Commit: ${short_sha} | Run: ${RUN_URL}"
+
           printf 'status=%s\n' "$status" >> "$GITHUB_OUTPUT"
           printf 'message=%s\n' "$message" >> "$GITHUB_OUTPUT"
 
