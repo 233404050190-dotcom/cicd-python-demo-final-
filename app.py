@@ -1,7 +1,6 @@
-import html
 import os
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
 
@@ -16,24 +15,10 @@ def current_environment() -> str:
 
 @app.get("/")
 def home():
-    environment = html.escape(current_environment())
-    return f"""<!doctype html>
-<html lang="vi">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>CI/CD Python Demo</title>
-</head>
-<body style="font-family: Arial; max-width: 700px;
-             margin: 80px auto; line-height: 1.6; padding: 0 16px;">
-    <h1>Ứng dụng CI/CD Python + Docker</h1>
-    <p>Ứng dụng Flask đã chạy thành công trong container Docker.</p>
-    <p><strong>Môi trường:</strong> {environment}</p>
-    <p>Kiểm tra hệ thống: <a href="/health">/health</a></p>
-    <p>API thử nghiệm: <a href="/api/greeting?name=Sinh%20vien">
-        /api/greeting</a></p>
-</body>
-</html>"""
+    return render_template(
+        "index.html",
+        environment=current_environment(),
+    )
 
 
 @app.get("/health")
