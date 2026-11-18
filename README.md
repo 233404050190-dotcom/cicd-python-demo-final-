@@ -380,3 +380,4 @@ Lệnh dự kiến trả exit code khác 0 (lần release mới không tồn t�
 - HTTP chưa có TLS/HTTPS, chưa có Nginx reverse proxy, monitoring tập trung hoặc hạ tầng HA.
 - CI/CD permission validation
 - Staging deployment test
+- Development deployment test
