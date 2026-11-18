@@ -1,0 +1,112 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Ứng dụng demo CI/CD với Python Flask, Docker và GitHub Actions.">
+    <title>CI/CD Python Dashboard</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
+</head>
+
+<body>
+    <header>
+        <div class="header-inner">
+            <div class="brand">
+                <span class="brand-icon" aria-hidden="true"></span>
+                <span>CI/CD Python Dashboard</span>
+            </div>
+            <span class="header-tag">Flask + Docker</span>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="hero-inner">
+                <h1>Ứng dụng CI/CD Python + Docker</h1>
+
+                <p>
+                    Ứng dụng mẫu phục vụ kiểm thử tự động,
+                    đóng gói và triển khai bằng GitHub Actions
+                    và Docker.
+                </p>
+
+                <div class="tech-list">
+                    <span>Python</span>
+                    <span>Flask</span>
+                    <span>Pytest</span>
+                    <span>Docker</span>
+                    <span>GitHub Actions</span>
+                    <span><strong>Môi trường:</strong> {{ environment }}</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="grid" aria-label="Kiểm tra API">
+            <article class="card card-health" id="healthCard" data-state="idle">
+                <div class="card-top">
+                    <div class="card-icon" aria-hidden="true">♥</div>
+                    <span class="lamp" aria-label="Trạng thái kiểm tra"></span>
+                </div>
+
+                <h3>Health Check</h3>
+                <p>
+                    Kiểm tra trạng thái hoạt động của ứng dụng
+                    và môi trường hiện tại.
+                </p>
+
+                <div class="endpoint">GET /health</div>
+
+                <button type="button" id="healthButton">
+                    Kiểm tra hệ thống
+                </button>
+
+                <div class="result-label">Kết quả phản hồi</div>
+                <pre id="healthResult" aria-live="polite">Nhấn nút để kiểm tra trạng thái.</pre>
+            </article>
+
+            <article class="card card-greeting" id="greetingCard" data-state="idle">
+                <div class="card-top">
+                    <div class="card-icon" aria-hidden="true">✦</div>
+                    <span class="lamp" aria-label="Trạng thái yêu cầu"></span>
+                </div>
+
+                <h3>Greeting API</h3>
+                <p>
+                    Gửi yêu cầu đến API và xem phản hồi
+                    trực tiếp trên giao diện.
+                </p>
+
+                <div class="endpoint">GET /api/greeting</div>
+
+                <form id="greetingForm">
+                    <label for="name">Tên của bạn</label>
+                    <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        placeholder="Nhập tên của bạn"
+                        maxlength="100"
+                        autocomplete="name"
+                    >
+
+                    <button type="submit">Gửi lời chào</button>
+                </form>
+
+                <div class="result-label">Kết quả phản hồi</div>
+                <pre id="greetingResult" aria-live="polite">Nhập tên và nhấn gửi lời chào.</pre>
+            </article>
+        </section>
+    </main>
+
+    <footer>
+        <p>CI/CD Python Demo · Flask · Docker · GitHub Actions</p>
+    </footer>
+</body>
+</html>
